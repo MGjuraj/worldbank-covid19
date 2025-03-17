@@ -1,0 +1,11 @@
+---
+title: "Data Analysis (refactored)"
+output: html_document
+date: "2025-03-17"
+---
+
+```{r}
+WB <- read.csv("data/wb-covid-data.csv")
+WB <- WB[, -1]
+```
+
