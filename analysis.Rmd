@@ -1,7 +1,9 @@
 ---
-title: "Data Analysis (refactored)"
+title: "Data Exploration and Analysis"
+subtitle: "COVID-19 Cases/Deaths by Nation"
+author: "By: Mark Gjuraj"
 output: html_document
-date: "2025-03-17"
+date: "Published: 2020-04-29 (Refactored: 2025-03-20)"
 ---
 
 ```{r}
@@ -92,6 +94,7 @@ db_0 <- db[, c("Country", "logCases", "AgriLand", "CO2", "Imports", "GNI", "PopG
 ```{r}
 db_0 <- db_0[complete.cases(db_0), ]
 cor1 <- round(cor(db_0[, -1]), 3)
+library(corrplot)
 sigcor1 <- cor.mtest(db_0[, -1], conf.level = 0.95)
 corrplot.mixed(cor1, 
                lower.col = "black", 
@@ -196,6 +199,7 @@ legend("topright",
        lwd = 3, 
        col = c("green", "red"), 
        lty = c(2,1))
+library(car)
 qqPlot(diffcc)
 ```
 
@@ -345,8 +349,25 @@ summary(m10)
 After removing `Cellphones`, `InfantMort`, `Climate`, `logGNI`, `Imports`, `Pop65Above`, `Govt`, `PopGrowth`, and `AgriLand`, we arrive at our final model `m10`, which predicts `logCases` with the continuous variables `logCO2`, `PM25`, `logAir`, `LifeExp`, and `logDeaths`.
 
 ```{r}
-## FIX
-# myResPlots2(m10, label = "(ln) COVID-19 Cases")
+resplots <- function(model, label) {
+  #Normal quantile plot of studentized residuals
+  qqPlot(rstudent(model), 
+         pch = 19,
+         col = "black",
+         main = paste("NQ Plot of Studentized Residuals, ", label))
+  #plot of fitted vs. studentized residuals
+  plot(rstudent(model) ~ model$fitted.values, 
+       pch = 19, 
+       col = 'red', 
+       xlab = "Fitted Values", 
+       ylab = "Studentized Residuals",
+       main = paste("Fits vs. Studentized Residuals, ", label))
+  abline(h = 0, lwd = 3)
+  abline(h = c(2,-2), lty = 2, lwd = 2, col="blue")
+  abline(h = c(3,-3), lty = 2, lwd = 2, col="green")
+}
+
+resplots(m10, label = "(ln) COVID-19 Cases")
 ```
 
 _____
