@@ -1,5 +1,5 @@
 
-# Data Manipulation Script
+# Data Manipulation (Collection, Processing, Cleaning) Script
 # 
 # UPDATE: March 17, 2025
 # > CIA World Factbook URLs scraped to obtain `Govt` and `Climate` no longer accessible; web scraping code commented-out

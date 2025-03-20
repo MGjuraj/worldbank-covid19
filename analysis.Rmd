@@ -5,7 +5,81 @@ date: "2025-03-17"
 ---
 
 ```{r}
-WB <- read.csv("data/wb-covid-data.csv")
-WB <- WB[, -1]
+db <- read.csv("data/wb-covid-data.csv")
+db <- db[, -1]
 ```
+
+``` {r, include = FALSE}
+db
+```
+
+
+### Descriptive Plots
+
+#### Focus: `CovidCases`
+
+```{r}
+par(mar = c(4, 5, 3, 1), cex.axis = 0.50)
+boxplot(db$CovidCases ~ db$Govt, 
+        main = "Boxplot of COVID-19 Cases by Government Type",
+        xlab = "Government Type",
+        ylab = "Number of Cases",
+        col = "greenyellow")
+par(mar = c(4, 5, 3, 1), cex.axis = 0.75)
+hist(db$CovidCases, 
+     main = "Histogram of COVID-19 Cases as of April 22, 2020", 
+     xlab = "Total Cases", 
+     ylab = "Number of Countries", 
+     col = "coral1", 
+     breaks = 20)
+```
+
+The boxplots indicate that the distribution of `CovidCases` for each factor of `Govt` seem to be heavily right-skewed, and the histogram of `CovidCases` is indicative of an approximately exponential distribution. This suggests a natural log transformation of `CovidCases`. A new feature `logCases` is created.
+
+```{r}
+par(mar = c(4, 5, 3, 1), cex.axis = 0.50)
+boxplot(log(db$CovidCases) ~ db$Govt, 
+        main = "Boxplot of (ln) COVID-19 Cases By Government Type", 
+        xlab = "Government Type", 
+        ylab = "(ln) Number of Cases", 
+        col = "greenyellow")
+db$logCases <- log(db$CovidCases)
+```
+
+---
+
+#### Focus: `CovidDeaths`
+
+```{r}
+par(mar = c(4, 5, 3, 1), cex.axis = 0.50)
+boxplot(db$CovidDeaths ~ db$Govt, 
+        main = "Boxplot of COVID-19 Deaths By Government Type", 
+        xlab = "Government Type", 
+        ylab = "Number of Deaths", 
+        col = "royalblue1")
+par(mar = c(4, 5, 3, 1), cex.axis = 0.75)
+hist(db$CovidDeaths, 
+     main = "Histogram of COVID-19 Deaths as of April 22, 2020", 
+     xlab = "Total Deaths", 
+     ylab = "Number of Countries", 
+     col = "darkslategray1", 
+     breaks = 20)
+```
+
+```{r}
+db$logDeaths <- log(db$CovidDeaths + 1)
+par(mar = c(4, 5, 3, 1), cex.axis = 0.50)
+boxplot(db$logDeaths ~ db$Govt, 
+        main = "Boxplot of (ln) COVID-19 Deaths By Government Type",
+        xlab = "Government Type", 
+        ylab = "(ln) Number of Deaths", 
+        col = "royalblue1")
+```
+
+A similar distribution for `CovidDeaths` is evident. Note: applying a natural log transformation to `CovidDeaths` results in a handful of "-infinity" values, due to the fact that some nations have a death count of 0. To remedy this, `CovidDeaths` is incremented by 1 before creating `logDeaths`.
+
+---
+
+
+
 
