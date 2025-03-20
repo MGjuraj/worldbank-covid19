@@ -13,6 +13,7 @@ db <- db[, -1]
 db
 ```
 
+## Exploration
 
 ### Descriptive Plots
 
@@ -80,6 +81,294 @@ A similar distribution for `CovidDeaths` is evident. Note: applying a natural lo
 
 ---
 
+### Correlation, Linearity, Multicollinearity
+
+A smaller dataframe `db_0` is created with some of the continuous variables at our disposal. These will be the continuous variables utilized in the multiple regression model conducted later in this report, where we seek to predict `logCases`.
+
+```{r}
+db_0 <- db[, c("Country", "logCases", "AgriLand", "CO2", "Imports", "GNI", "PopGrowth", "PM25", "Pop65Above", "Cellphones", "InfantMort", "AirTravel", "LifeExp", "logDeaths")]
+```
+
+```{r}
+db_0 <- db_0[complete.cases(db_0), ]
+cor1 <- round(cor(db_0[, -1]), 3)
+sigcor1 <- cor.mtest(db_0[, -1], conf.level = 0.95)
+corrplot.mixed(cor1, 
+               lower.col = "black", 
+               upper = "ellipse", 
+               tl.col = "black", 
+               number.cex = 0.8,
+               order = "hclust",
+               tl.pos = "d", 
+               tl.cex = 0.5, 
+               p.mat = sigcor1$p, 
+               sig.level = 0.05)
+```
+
+The correlation plot illustrates the strength of each pairwise correlation &mdash; including the p-values resulting from parametric tests of each correlation's significance &mdash; and an "X" is drawn through the plots whose variables do not have a statistically significant non-zero correlation. 
 
 
+```{r}
+plot(db_0[, -1], 
+     main = "Matrix Plot of Subset of WB Data", 
+     pch = 16, 
+     cex = 0.5, 
+     col = "darkorange2")
+```
 
+The top row of the matrix plot indicates that there are a few predictor variables that should be transformed, as some of the plots demonstrate non-linear relationships.
+
+```{r}
+db$logCO2 <- log(db$CO2)
+db$logGNI <- log(db$GNI)
+db$logAir <- log(db$AirTravel)
+db_0 <- db[, c("Country", "logCases", "AgriLand", "logCO2", "Imports", "logGNI", "PopGrowth", "PM25", "Pop65Above", "Cellphones", "InfantMort", "logAir", "LifeExp", "logDeaths")]
+plot(db_0[, -1], main = "Matrix Plot of Subset of WB Data", pch = 16, cex = 0.5, 
+     col = "darkorange2")
+```
+
+The uppermost row of the matrix plot is now satisfactory; all of the scatterplots appear to resemble either lines or random noise. 
+
+Notably, there are a few instances of multicollinearity observable throughout the rest of the plots. While this does violate the assumption that the predictors in a multiple linear regression model are uncorrelated with one another, we  accept the reality that some of our variables will compete in explaining the variability in `logCases`, and progress onward.
+
+---
+
+## Analysis
+
+### Two Sample T-test
+
+```{r}
+boxplot(db$logCases ~ db$Climate, 
+        main = "Boxplot of (ln) COVID-19 Cases By Climate Type", 
+        xlab = "Climate Type", 
+        ylab = "(ln) Number of Cases", 
+        col = "firebrick2")
+```
+
+The boxplots above indicate that there could be a statistically significant difference in mean `logCases` for the `Climate` factors "temperate" and "tropical".
+
+```{r}
+db_temp <- db[, c("Climate","CovidCases","logCases")]
+db_temp <- na.omit(db_temp[db_temp$Climate == c('temperate','tropical'),])
+```
+
+```{r}
+t.test(CovidCases ~ Climate, data = db_temp)
+(logtt <- t.test(logCases ~ Climate, data = db_temp))
+```
+The two-sample t-test shows that there is no evidence of a significant difference in mean `CovidCases` between the `Climate` types. 
+
+However, when we consider `logCases`, the t-test results in a p-value of approximately 0.0000001, which is less than any reasonable threshold. Thus, we can reject the null hypothesis and accept the alternative hypothesis &mdash; the mean `logCases` for countries with tropical and temperate climates are statistically significantly different.
+
+### Bootstrapped Confidence Interval
+
+By resampling the difference in the sample means, we can obtain a bootstrapped confidence interval for the true difference in mean `logCases` between nations with "temperate" and "tropical" climates, and subsequently compare this with the theoretical confidence interval from the two-sample t-test.
+
+```{r}
+N <- 10000
+diffcc <- rep(NA, N)
+for (i in 1:N) {
+  s_temperate <- sample(db_temp$logCases[db_temp$Climate == "temperate"],
+                        sum(db_temp$Climate == "temperate"), 
+                        replace = TRUE)
+  s_tropical <- sample(db_temp$logCases[db_temp$Climate == "tropical"],
+                       sum(db_temp$Climate == "tropical"), 
+                       replace = TRUE)
+  diffcc[i] <- mean(s_temperate) - mean(s_tropical)
+}
+bootci <- quantile(diffcc, c(0.025, 0.975))
+ttest_CI <- logtt$conf.int
+```
+
+```{r}
+hist(diffcc, 
+     col = "steelblue4", 
+     main = "Bootstrapped Sample Mean Diff in logCases",
+     xlab = "(ln) Number of COVID-19 Cases", 
+     breaks = 50)
+abline(v = bootci, 
+       lwd = 3, 
+       col = "red", 
+       lty = 1)
+abline(v = ttest_CI, lwd = 3, col = "green", lty = 2)
+legend("topright", 
+       c("Original CI","Bootstrap CI"), 
+       lwd = 3, 
+       col = c("green", "red"), 
+       lty = c(2,1))
+qqPlot(diffcc)
+```
+
+Evidently, as we'd expect (thanks to the Central Limit Theorem) the bootstrapped sample mean differences in `logCases` between nations with "temperate" and "tropical" climates are approximately normally distributed. 
+
+The bootstrapped and original (derived from the parametric test) confidence intervals are superimposed onto the histogram, and the bootstrapped confidence interval appears to be slightly more narrow.
+
+### Permutation Test: Correlation
+
+With a Permutation Test, we can determine whether or not the true correlation between two variables is statistically significantly different from 0 (no linear relationship). The variables we chose to assess are `logCases` and `logAir`.
+
+```{r}
+db_temp2 <- na.omit(db[,c('AirTravel',"logCases", "logAir")])
+plot(logCases ~ AirTravel, 
+     data = db_temp2, 
+     pch = 19, 
+     col = "orangered2")
+```
+
+Recall our natural log transformation of the variable `AirTravel`; computing the correlation of this set of data would not be proper, as these variables do not have a linear relationship.
+
+```{r}
+plot(db_temp2$logCases ~ db_temp2$logAir, 
+     pch = 19, 
+     col = "orangered2")
+(obs_cor <- cor(db_temp2$logAir, db_temp2$logCases))
+```
+
+The actual, observed correlation is approximately 0.683, which is a moderately positive correlation. If we assume that the null hypothesis &mdash; the true correlation between `logAir` and `logCases` equals 0 &mdash; is true, then we can randomize (permute) the values of `logAir` that are associated with each observation of `logCases` (without replacement).
+
+```{r}
+n_samp <- 10000
+corResults <- rep(NA, n_samp)
+for(i in 1:n_samp){
+  corResults[i] <- cor(db_temp2$logAir, sample(db_temp2$logCases))
+}
+# P-value (two-sided) for correlation
+(truecor <- mean(abs(corResults) >= abs(obs_cor)))
+```
+
+The distribution of these 10000 permuted correlations can be plotted using a histogram.
+
+```{r, echo=FALSE}
+hist(corResults, 
+     col = "mediumvioletred", 
+     xlab = "Correlations", 
+     main = "", 
+     breaks = 50, 
+     xlim = c(-0.4, 0.7))
+mtext("Permuted Sample Correlations: logAir and logCases", 
+      cex = 1.2, 
+      line = 1)
+mtext(paste("Permuted P-value =", round(truecor,4)), 
+      cex = 1, 
+      line = 0)
+abline(v = obs_cor, 
+       col="blue", 
+       lwd = 3)
+text(obs_cor - .02, 
+     200, 
+     paste("Actual Correlation =", round(obs_cor,2)), 
+     srt = 90)
+```
+
+The "permuted p-value" of the correlation between `logAir` and `logCases` is 0. Thus, the probability of observing the actual correlation (or something more extreme) in a distribution under the null hypothesis is approximately 0. This is less than any reasonable threshold, so we reject this null hypothesis, concluding that there is a statistically significant correlation between a nation's (natural log) Air Travel activity and (natural log) COVID-19 case count.
+
+### Multiple Regression
+
+The dataframe `WB_1` is created with the continuous variables we examined in the descriptive plots above. In addition, we include the categorical variables `Govt` and `Climate`.
+
+```{r}
+db_1 <- db[, c("logCases", "AgriLand", "logCO2", "Imports", "logGNI", "PopGrowth", "PM25", "Pop65Above", "Cellphones", "InfantMort", "logAir", "LifeExp", "logDeaths", "Govt", "Climate")]
+db_1 <- db_1[complete.cases(db_1), ]
+```
+
+We seek to predict `logCases`, and we arrive at our final model using Backwards Stepwise Regression. With the `Anova()` function, the p-values quantifying the overall significance of each of the variables are given. We discard the most insignificant predictors (largest p-values) until we arrive at a model whose predictors are all statistically significant at the 0.05 threshold.
+
+```{r}
+m1 <- lm(logCases ~., 
+         data = db_1)
+Anova(m1, type = 3)
+```
+
+```{r}
+# Remove Cellphones
+m2 <- lm(logCases ~ AgriLand + logCO2 + Imports + logGNI + PopGrowth + PM25 + Pop65Above + InfantMort + logAir + LifeExp + logDeaths + Govt + Climate, 
+         data = db_1)
+Anova(m2, type = 3)
+```
+
+```{r}
+# Remove InfantMort
+m3 <- lm(logCases ~ AgriLand + logCO2 + Imports + logGNI + PopGrowth + PM25 + Pop65Above + logAir + LifeExp + logDeaths + Govt + Climate, 
+         data = db_1)
+Anova(m3, type = 3)
+```
+
+```{r}
+# Remove Climate
+m4 <- lm(logCases ~ AgriLand + logCO2 + Imports + logGNI + PopGrowth + PM25 + Pop65Above + logAir + LifeExp + logDeaths + Govt, 
+         data = db_1)
+Anova(m4, type = 3)
+```
+
+```{r}
+# Remove logGNI
+m5 <- lm(logCases ~ AgriLand + logCO2 + Imports + PopGrowth + PM25 + Pop65Above + logAir + LifeExp + logDeaths + Govt, 
+         data = db_1)
+Anova(m5, type = 3)
+```
+
+```{r}
+# Remove Imports
+m6 <- lm(logCases ~ AgriLand + logCO2 + PopGrowth + PM25 + Pop65Above + logAir + LifeExp + logDeaths + Govt, 
+         data = db_1)
+Anova(m6, type = 3)
+```
+
+```{r}
+# Remove Pop65ABove
+m7 <- lm(logCases ~ AgriLand + logCO2 + PopGrowth + PM25 + logAir + LifeExp + logDeaths + Govt, 
+         data = db_1)
+Anova(m7, type = 3)
+```
+
+```{r}
+# Remove Govt
+m8 <- lm(logCases ~ AgriLand + logCO2 + PopGrowth + PM25 + logAir + LifeExp + logDeaths, 
+         data = db_1)
+Anova(m8, type = 3)
+```
+
+```{r}
+# Remove PopGrowth
+m9 <- lm(logCases ~ AgriLand + logCO2 + PM25 + logAir + LifeExp + logDeaths, 
+         data = db_1)
+Anova(m9, type = 3)
+# Remove AgriLand
+```
+
+```{r}
+m10 <- lm(logCases ~ logCO2 + PM25 + logAir + LifeExp + logDeaths, 
+          data = db_1)
+summary(m10)
+```
+
+After removing `Cellphones`, `InfantMort`, `Climate`, `logGNI`, `Imports`, `Pop65Above`, `Govt`, `PopGrowth`, and `AgriLand`, we arrive at our final model `m10`, which predicts `logCases` with the continuous variables `logCO2`, `PM25`, `logAir`, `LifeExp`, and `logDeaths`.
+
+```{r}
+## FIX
+# myResPlots2(m10, label = "(ln) COVID-19 Cases")
+```
+
+_____
+
+## Summary
+
+In this project, we wanted to analyze how different demographics of countries relate to their respective COVID-19 situations. To do this, we used up-to-date World Bank data, as well as categorical variables that we scraped ourselves. 
+
+After cleaning our data, we created descriptive plots for some of the variables, and performed the appropriate transformations on the variables that showcased nonlinear trends with `logCases`. 
+
+We then created matrix plots and correlation plots with some of the continuous variables to assess possible relationships between the variables; we tried to choose variables for these analyses that would not be subject to multicollinearlity (but we encountered this issue regardless). 
+
+Subsequently, we performed a two-sample t-test and bootstrapped the difference in the sample means (`logCases`) of two climates (tropical and temperate). Not to mention, a permutation test was done in an attempt to explore the strength of the linear relationship between (ln) COVID-19 cases and (ln) airline activity.
+
+Finally, we performed a multiple regression analysis with the possible predictors of (ln) COVID-19 cases, using the backwards-stepwise regression method. This was performed using the same continuous variables from our matrix plot analysis, plus the two categorical variables that we scraped. 
+
+Our model ended up with five significant predictors: `logCO2`, `PM25`, `logAir`, `LifeExp`, and `logDeaths`, all with p-values of less than alpha = 0.05 and positive coefficients. The overall model has strong predictive power, with 97 degrees of freedom, and a multiple r-squared value of 0.898. This means that roughly 89.8% of the variation in (ln) COVID-19 cases by country can be explained by our model with these five predictors.
+
+Furthermore, the residual plots of our final model satisfy our regression assumptions, albeit with a slight truncation in the approximately normal distribution, as apparent on the Normal Quantile Plot (towards the lower end). 
+
+The residuals on the Fits versus Residuals plot possess a relatively constant variance for all fitted values of our Y variable `logCases`, meaning there is no evidence of heteroskedasticity. Notably, there are a handful of outliers hovering in-and-around the studentized residual of -3 on the residual plot, but we decided to ignore them.
+
+Based on the little we know about this baffling virus, some of significant predictors we arrived at make intuitive sense, such as LifeExp, logDeaths, and logAir. The other predictors &mdash; logCO2 and PM25 &mdash; were a bit surprising.
+
+Countries with higher values of these variables might have more air pollution due to being more industrial / developed; the densely-populated cities that grow around such industrial centers may thus have a relationship to the COVID-19 incidences in these regions.
